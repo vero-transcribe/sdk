@@ -29,13 +29,14 @@
   ],
   "author": "VeroAI",
   "license": "MIT",
+  "homepage": "https://verotranscribe.com",
   "devDependencies": {
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/veroai/transcribe-sdk"
+    "url": "git+https://github.com/vero-transcribe/sdk.git"
   },
   "dependencies": {
     "@types/node": "^25.0.10"
