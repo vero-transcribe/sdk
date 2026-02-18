@@ -283,6 +283,135 @@ export interface BulkTranscribeResult {
   failed: Array<{ filename: string; transcriptionId?: string; error: Error }>
 }
 
+// Meeting types
+export type MeetingStatus = 'joining' | 'in_call' | 'recording' | 'transcribing' | 'analyzed' | 'error'
+export type MeetingPlatform = 'zoom' | 'teams' | 'google_meet' | 'unknown'
+
+export interface Meeting {
+  id: string
+  bot_id: string
+  meeting_url: string
+  platform: MeetingPlatform
+  status: MeetingStatus
+  title?: string
+  scheduled_by?: string
+  customer_id?: string
+  account_id: string
+  participants?: string[]
+  duration_seconds?: number
+  recording_url?: string
+  transcript?: Record<string, unknown>
+  summary?: string
+  action_items?: unknown[]
+  analysis?: Record<string, unknown>
+  coaching_notes?: Record<string, unknown>
+  transcription_status?: string
+  analysis_status?: string
+  error_code?: string
+  error_message?: string
+  meeting_started_at?: string
+  meeting_ended_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SendBotParams {
+  meeting_url: string
+  customer_id?: string
+  title?: string
+  scheduled_by?: string
+  bot_name?: string
+  recording_mode?: 'speaker_view' | 'gallery_view' | 'audio_only'
+}
+
+export interface SendBotResponse {
+  success: boolean
+  bot_id: string
+  platform: MeetingPlatform
+}
+
+export interface ListMeetingsParams {
+  customerId?: string
+  limit?: number
+  offset?: number
+}
+
+export interface ListMeetingsResponse {
+  data: Meeting[]
+  pagination: {
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
+}
+
+// Sub-account types
+export interface SubAccount {
+  id: string
+  name: string
+  accountType: string
+  parentAccountId: string
+  createdAt: string
+}
+
+export interface CreateSubAccountParams {
+  name: string
+}
+
+export interface ListSubAccountsParams {
+  limit?: number
+  offset?: number
+}
+
+export interface ListSubAccountsResponse {
+  data: SubAccount[]
+  pagination: {
+    limit: number
+    offset: number
+    total: number
+    hasMore: boolean
+  }
+}
+
+// Meet user types
+export type MeetUserInviteStatus = 'pending' | 'active'
+
+export interface MeetUser {
+  id: string
+  name: string
+  email: string
+  accountType: string
+  inviteStatus: MeetUserInviteStatus
+  parentAccountId: string
+  oauthProvider?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface CreateMeetUserParams {
+  name: string
+  email: string
+}
+
+export interface UpdateMeetUserParams {
+  name?: string
+}
+
+export interface ListMeetUsersParams {
+  limit?: number
+  offset?: number
+}
+
+export interface ListMeetUsersResponse {
+  data: MeetUser[]
+  pagination: {
+    limit: number
+    offset: number
+    total: number
+    hasMore: boolean
+  }
+}
+
 // Error types
 export interface APIErrorResponse {
   error: {

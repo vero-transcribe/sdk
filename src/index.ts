@@ -2,6 +2,8 @@ import { HttpClient } from './client'
 import { TranscriptionsResource } from './resources/transcriptions'
 import { WebhooksResource, createWebhookVerifier } from './resources/webhooks'
 import { UsageResource } from './resources/usage'
+import { MeetingsResource } from './resources/meetings'
+import { SubAccountsResource } from './resources/subAccounts'
 import type { VeroTranscribeConfig } from './types'
 
 export class VeroTranscribe {
@@ -22,6 +24,18 @@ export class VeroTranscribe {
    * Get usage statistics and billing information
    */
   readonly usage: UsageResource
+
+  /**
+   * Meetings API
+   * Send bots, list, and retrieve meeting recordings
+   */
+  readonly meetings: MeetingsResource
+
+  /**
+   * Sub-accounts API
+   * Manage sub-accounts and meet users (reseller only)
+   */
+  readonly subAccounts: SubAccountsResource
 
   /**
    * Create a new VeroTranscribe client
@@ -51,6 +65,8 @@ export class VeroTranscribe {
     this.transcriptions = new TranscriptionsResource(client)
     this.webhooks = new WebhooksResource(client)
     this.usage = new UsageResource(client)
+    this.meetings = new MeetingsResource(client)
+    this.subAccounts = new SubAccountsResource(client)
   }
 }
 
@@ -87,6 +103,23 @@ export type {
   UsageHistoryRecord,
   UsageHistoryResponse,
   UsageHistoryParams,
+  Meeting,
+  MeetingStatus,
+  MeetingPlatform,
+  SendBotParams,
+  SendBotResponse,
+  ListMeetingsParams,
+  ListMeetingsResponse,
+  SubAccount,
+  CreateSubAccountParams,
+  ListSubAccountsParams,
+  ListSubAccountsResponse,
+  MeetUser,
+  MeetUserInviteStatus,
+  CreateMeetUserParams,
+  UpdateMeetUserParams,
+  ListMeetUsersParams,
+  ListMeetUsersResponse,
 } from './types'
 
 export { VeroAPIError } from './types'
