@@ -1,15 +1,20 @@
 {
   "name": "@veroai/transcribe",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Official Node.js/TypeScript SDK for VeroTranscribe API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
   },
   "files": [
@@ -21,13 +26,16 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run tests/client.test.ts tests/webhook-verifier.test.ts",
+    "test:unit": "vitest run tests/client.test.ts tests/webhook-verifier.test.ts tests/resources.test.ts",
     "test:e2e": "vitest run tests/transcriptions.test.ts tests/webhooks.test.ts tests/usage.test.ts"
   },
   "keywords": [
     "verotranscribe",
     "transcription",
     "speech-to-text",
+    "diarization",
+    "call-audit",
+    "scorecards",
     "ai",
     "audio"
   ],

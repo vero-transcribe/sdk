@@ -2,10 +2,16 @@ import type { HttpClient } from '../client'
 import type {
   Transcription,
   CreateTranscriptionParams,
+  CreateTranscriptionOptions,
   ListTranscriptionsParams,
   ListTranscriptionsResponse,
   UploadAudioParams,
   UploadAudioResponse,
+  WaitForCompletionOptions,
+  TranscriptionAnalysisResponse,
+  TranscriptionEvaluation,
+  RerunEvaluationParams,
+  RerunEvaluationResponse,
   BulkUploadParams,
   BulkUploadResponse,
   BulkTranscribeOptions,
@@ -24,29 +30,76 @@ export class TranscriptionsResource {
 
   /**
    * Create a new transcription.
-   * If audioUrl is provided, transcription starts immediately.
-   * Otherwise, use upload() to provide the audio file.
+   * If `audioUrl` is provided, transcription starts immediately.
+   * Otherwise, use `upload()` to provide the audio file.
    */
-  async create(params: CreateTranscriptionParams): Promise<Transcription> {
-    return this.client.post<Transcription>('/v1/transcriptions', params)
+  async create(
+    params: CreateTranscriptionParams = {},
+    options?: CreateTranscriptionOptions
+  ): Promise<Transcription> {
+    const query = new URLSearchParams()
+    if (options?.provider) query.set('provider', options.provider)
+    const queryString = query.toString()
+    const path = queryString ? `/v1/transcriptions?${queryString}` : '/v1/transcriptions'
+
+    return this.client.post<Transcription>(path, params)
   }
 
   /**
    * Get a transcription by ID
    */
   async get(id: string): Promise<Transcription> {
-    return this.client.get<Transcription>(`/v1/transcriptions/${id}`)
+    return this.client.get<Transcription>(`/v1/transcriptions/${encodeURIComponent(id)}`)
   }
 
   /**
-   * List all transcriptions
+   * Get unified AI analysis, scorecard evaluation + item verdicts, and alerts for a transcription
+   */
+  async getAnalysis(id: string): Promise<TranscriptionAnalysisResponse> {
+    return this.client.get<TranscriptionAnalysisResponse>(
+      `/v1/transcriptions/${encodeURIComponent(id)}/analysis`
+    )
+  }
+
+  /**
+   * Get the latest QA scorecard evaluation (scores + item verdicts) for a transcription
+   */
+  async getEvaluation(id: string): Promise<TranscriptionEvaluation> {
+    return this.client.get<TranscriptionEvaluation>(
+      `/v1/transcriptions/${encodeURIComponent(id)}/evaluation`
+    )
+  }
+
+  /**
+   * Re-run QA scorecard evaluation on a completed transcription
+   */
+  async rerunEvaluation(
+    id: string,
+    params?: RerunEvaluationParams
+  ): Promise<RerunEvaluationResponse> {
+    const body: Record<string, unknown> = {}
+    const scorecardId = params?.scorecard_id ?? params?.scorecardId
+    const scorecardVersion = params?.scorecard_version ?? params?.scorecardVersion
+    if (scorecardId !== undefined) body.scorecard_id = scorecardId
+    if (scorecardVersion !== undefined) body.scorecard_version = scorecardVersion
+
+    return this.client.post<RerunEvaluationResponse>(
+      `/v1/transcriptions/${encodeURIComponent(id)}/evaluation/rerun`,
+      Object.keys(body).length > 0 ? body : undefined
+    )
+  }
+
+  /**
+   * List transcriptions with optional filters
    */
   async list(params?: ListTranscriptionsParams): Promise<ListTranscriptionsResponse> {
     const query = new URLSearchParams()
-    if (params?.limit) query.set('limit', String(params.limit))
-    if (params?.offset) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
     if (params?.status) query.set('status', params.status)
     if (params?.aiAnalysis) query.set('aiAnalysis', params.aiAnalysis)
+    if (params?.pack) query.set('pack', params.pack)
+    if (params?.callType) query.set('callType', params.callType)
     if (params?.from) {
       const fromDate = params.from instanceof Date ? params.from.toISOString() : params.from
       query.set('from', fromDate)
@@ -66,12 +119,14 @@ export class TranscriptionsResource {
    * Delete a transcription
    */
   async delete(id: string): Promise<{ success: boolean }> {
-    return this.client.delete<{ success: boolean }>(`/v1/transcriptions/${id}`)
+    return this.client.delete<{ success: boolean }>(
+      `/v1/transcriptions/${encodeURIComponent(id)}`
+    )
   }
 
   /**
-   * Upload an audio file for an existing transcription
-   * This enqueues the transcription for processing
+   * Upload an audio file (and optional second channel `audio2`) for a pending transcription.
+   * Enqueues the transcription for processing.
    */
   async upload(
     id: string,
@@ -80,44 +135,55 @@ export class TranscriptionsResource {
   ): Promise<UploadAudioResponse> {
     const formData = new FormData()
     formData.append('audio', audio)
+    if (params?.audio2) {
+      formData.append('audio2', params.audio2)
+    }
 
-    const query = params?.provider ? `?provider=${params.provider}` : ''
-    return this.client.postFormData<UploadAudioResponse>(
-      `/v1/transcriptions/${id}/upload${query}`,
-      formData
-    )
+    const query = new URLSearchParams()
+    if (params?.splitChannels !== undefined) {
+      query.set('splitChannels', String(params.splitChannels))
+    }
+    if (params?.numSpeakers !== undefined) {
+      query.set('numSpeakers', String(params.numSpeakers))
+    }
+    if (params?.provider) {
+      query.set('provider', params.provider)
+    }
+
+    const queryString = query.toString()
+    const basePath = `/v1/transcriptions/${encodeURIComponent(id)}/upload`
+    const path = queryString ? `${basePath}?${queryString}` : basePath
+
+    return this.client.postFormData<UploadAudioResponse>(path, formData)
   }
 
   /**
-   * Create a transcription, upload audio, and wait for completion
-   * Convenience method that combines create(), upload(), and waitForCompletion()
+   * Create a transcription, upload local audio, and wait for completion.
+   * Convenience method combining `create()`, `upload()`, and `waitForCompletion()`.
    */
   async transcribeFile(
     audio: File | Blob,
     params?: CreateTranscriptionParams & UploadAudioParams,
-    options?: {
-      pollInterval?: number
-      maxWaitTime?: number
-      onProgress?: (transcription: Transcription) => void
-    }
+    options?: WaitForCompletionOptions
   ): Promise<Transcription> {
-    const { provider, ...createParams } = params || {}
-    const transcription = await this.create(createParams)
-    await this.upload(transcription.id, audio, { provider })
+    const { audio2, provider, ...createParams } = params || {}
+    const transcription = await this.create(createParams, provider ? { provider } : undefined)
+    await this.upload(transcription.id, audio, {
+      audio2,
+      splitChannels: createParams.splitChannels,
+      numSpeakers: createParams.numSpeakers,
+      provider,
+    })
     return this.waitForCompletion(transcription.id, options)
   }
 
   /**
-   * Wait for a transcription to complete
-   * Polls the API at regular intervals until the transcription is completed or failed
+   * Wait for a transcription to complete.
+   * Polls the API at regular intervals until the transcription is completed or failed.
    */
   async waitForCompletion(
     id: string,
-    options?: {
-      pollInterval?: number
-      maxWaitTime?: number
-      onProgress?: (transcription: Transcription) => void
-    }
+    options?: WaitForCompletionOptions
   ): Promise<Transcription> {
     const pollInterval = options?.pollInterval || DEFAULT_POLL_INTERVAL
     const maxWaitTime = options?.maxWaitTime || DEFAULT_MAX_WAIT_TIME
@@ -148,7 +214,7 @@ export class TranscriptionsResource {
 
   /**
    * Create a transcription from a URL and wait for it to complete.
-   * When audioUrl is provided, transcription starts immediately.
+   * When `audioUrl` is provided, transcription starts immediately.
    *
    * @example
    * ```ts
@@ -160,18 +226,28 @@ export class TranscriptionsResource {
    */
   async transcribe(
     params: CreateTranscriptionParams & { audioUrl: string },
-    options?: {
-      pollInterval?: number
-      maxWaitTime?: number
-      onProgress?: (transcription: Transcription) => void
-    }
+    options?: WaitForCompletionOptions & CreateTranscriptionOptions
   ): Promise<Transcription> {
-    const transcription = await this.create(params)
+    const transcription = await this.create(
+      params,
+      options?.provider ? { provider: options.provider } : undefined
+    )
     return this.waitForCompletion(transcription.id, options)
   }
 
   /**
-   * Upload multiple audio files for transcription in a single batch.
+   * Convenience alias for `transcribe()` taking `audioUrl` as the first argument.
+   */
+  async transcribeUrl(
+    audioUrl: string,
+    params?: Omit<CreateTranscriptionParams, 'audioUrl'>,
+    options?: WaitForCompletionOptions & CreateTranscriptionOptions
+  ): Promise<Transcription> {
+    return this.transcribe({ ...params, audioUrl }, options)
+  }
+
+  /**
+   * Upload multiple audio files for transcription in a single batch (max 20 files).
    * Returns immediately after files are queued for processing.
    *
    * @example
@@ -211,21 +287,7 @@ export class TranscriptionsResource {
 
   /**
    * Upload multiple files and wait for all to complete.
-   * Handles partial failures gracefully - returns both completed and failed transcriptions.
-   *
-   * @example
-   * ```ts
-   * const result = await vero.transcriptions.bulkTranscribe(
-   *   [file1, file2, file3],
-   *   { language: 'en' },
-   *   {
-   *     onBatchProgress: (completed, total) => {
-   *       console.log(`Progress: ${completed}/${total}`)
-   *     }
-   *   }
-   * )
-   * console.log(`Completed: ${result.completed.length}, Failed: ${result.failed.length}`)
-   * ```
+   * Handles partial failures gracefully — returns both completed and failed transcriptions.
    */
   async bulkTranscribe(
     files: File[] | Blob[] | Array<{ file: File | Blob; name?: string }>,
@@ -236,7 +298,9 @@ export class TranscriptionsResource {
     const uploadResult = await this.bulkUpload(files, params)
 
     // Get IDs of successfully queued transcriptions
-    const queuedItems = uploadResult.results.filter((r) => r.status === 'queued' && r.transcriptionId)
+    const queuedItems = uploadResult.results.filter(
+      (r) => r.status === 'queued' && r.transcriptionId
+    )
 
     // Wait for all to complete
     const results = await this.waitForBatch(

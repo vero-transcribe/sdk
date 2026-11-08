@@ -15,8 +15,37 @@ export class HttpClient {
     }
 
     this.apiKey = config.apiKey
-    this.baseUrl = config.baseUrl || DEFAULT_BASE_URL
+    this.baseUrl = (config.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '')
     this.timeout = config.timeout || DEFAULT_TIMEOUT
+  }
+
+  private async throwResponseError(response: Response): Promise<never> {
+    let errorData: APIErrorResponse | undefined
+    try {
+      errorData = (await response.json()) as APIErrorResponse
+    } catch {
+      throw new VeroAPIError('An unknown error occurred', 'unknown_error', response.status)
+    }
+
+    const message = errorData?.error?.message || 'An unknown error occurred'
+    const code = errorData?.error?.code || 'unknown_error'
+    const details = errorData?.error?.details
+    throw new VeroAPIError(message, code, response.status, details)
+  }
+
+  private wrapNetworkError(error: unknown): never {
+    if (error instanceof VeroAPIError) {
+      throw error
+    }
+
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new VeroAPIError('Request timed out', 'timeout', 408)
+      }
+      throw new VeroAPIError(error.message, 'network_error', 0)
+    }
+
+    throw new VeroAPIError('An unknown error occurred', 'unknown_error', 0)
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -32,38 +61,20 @@ export class HttpClient {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       })
 
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        let errorData: APIErrorResponse
-        try {
-          errorData = await response.json()
-        } catch {
-          throw new VeroAPIError('An unknown error occurred', 'unknown_error', response.status)
-        }
-        throw new VeroAPIError(errorData.error.message, errorData.error.code, response.status)
+        await this.throwResponseError(response)
       }
 
-      return response.json()
+      return response.json() as Promise<T>
     } catch (error) {
       clearTimeout(timeoutId)
-
-      if (error instanceof VeroAPIError) {
-        throw error
-      }
-
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new VeroAPIError('Request timed out', 'timeout', 408)
-        }
-        throw new VeroAPIError(error.message, 'network_error', 0)
-      }
-
-      throw new VeroAPIError('An unknown error occurred', 'unknown_error', 0)
+      this.wrapNetworkError(error)
     }
   }
 
@@ -75,12 +86,45 @@ export class HttpClient {
     return this.request<T>('POST', path, body)
   }
 
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PUT', path, body)
+  }
+
   async patch<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, body)
   }
 
   async delete<T>(path: string): Promise<T> {
     return this.request<T>('DELETE', path)
+  }
+
+  async getArrayBuffer(path: string, extraHeaders?: Record<string, string>): Promise<ArrayBuffer> {
+    const url = `${this.baseUrl}${path}`
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          ...extraHeaders,
+        },
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        await this.throwResponseError(response)
+      }
+
+      return response.arrayBuffer()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      this.wrapNetworkError(error)
+    }
   }
 
   async postFormData<T>(path: string, formData: FormData): Promise<T> {
@@ -102,31 +146,13 @@ export class HttpClient {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        let errorData: APIErrorResponse
-        try {
-          errorData = await response.json()
-        } catch {
-          throw new VeroAPIError('An unknown error occurred', 'unknown_error', response.status)
-        }
-        throw new VeroAPIError(errorData.error.message, errorData.error.code, response.status)
+        await this.throwResponseError(response)
       }
 
-      return response.json()
+      return response.json() as Promise<T>
     } catch (error) {
       clearTimeout(timeoutId)
-
-      if (error instanceof VeroAPIError) {
-        throw error
-      }
-
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new VeroAPIError('Request timed out', 'timeout', 408)
-        }
-        throw new VeroAPIError(error.message, 'network_error', 0)
-      }
-
-      throw new VeroAPIError('An unknown error occurred', 'unknown_error', 0)
+      this.wrapNetworkError(error)
     }
   }
 }

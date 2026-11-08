@@ -20,7 +20,7 @@ export class UsageResource {
    * @param params.days - Number of days to look back (default: 30)
    */
   async history(params?: UsageHistoryParams): Promise<UsageHistoryResponse> {
-    const query = params?.days ? `?days=${params.days}` : ''
+    const query = params?.days !== undefined ? `?days=${encodeURIComponent(String(params.days))}` : ''
     return this.client.get<UsageHistoryResponse>(`/v1/usage/history${query}`)
   }
 }

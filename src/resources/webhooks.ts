@@ -25,7 +25,7 @@ export class WebhooksResource {
    * Get a webhook by ID
    */
   async get(id: string): Promise<Webhook> {
-    return this.client.get<Webhook>(`/v1/webhooks/${id}`)
+    return this.client.get<Webhook>(`/v1/webhooks/${encodeURIComponent(id)}`)
   }
 
   /**
@@ -39,21 +39,23 @@ export class WebhooksResource {
    * Update a webhook
    */
   async update(id: string, params: UpdateWebhookParams): Promise<Webhook> {
-    return this.client.patch<Webhook>(`/v1/webhooks/${id}`, params)
+    return this.client.patch<Webhook>(`/v1/webhooks/${encodeURIComponent(id)}`, params)
   }
 
   /**
    * Delete a webhook
    */
   async delete(id: string): Promise<{ success: boolean }> {
-    return this.client.delete<{ success: boolean }>(`/v1/webhooks/${id}`)
+    return this.client.delete<{ success: boolean }>(`/v1/webhooks/${encodeURIComponent(id)}`)
   }
 
   /**
    * Get delivery history for a webhook (last 10)
    */
   async deliveries(id: string): Promise<ListWebhookDeliveriesResponse> {
-    return this.client.get<ListWebhookDeliveriesResponse>(`/v1/webhooks/${id}/deliveries`)
+    return this.client.get<ListWebhookDeliveriesResponse>(
+      `/v1/webhooks/${encodeURIComponent(id)}/deliveries`
+    )
   }
 }
 
@@ -66,15 +68,27 @@ export class WebhooksResource {
  * @example
  * ```typescript
  * const verifier = createWebhookVerifier('whsec_...')
- * const isValid = await verifier.verify(rawBody, signatureHeader, timestampHeader)
+ * const isValid = await verifier.verify(
+ *   rawBody,
+ *   req.headers['x-webhook-signature'],
+ *   req.headers['x-webhook-timestamp']
+ * )
  * ```
  */
 export function createWebhookVerifier(secret: string) {
   return {
     verify: async (body: string, signature: string, timestamp: string): Promise<boolean> => {
+      if (!signature || !timestamp) return false
       const crypto = await import('crypto')
-      const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')
-      return `sha256=${expected}` === signature
+      const expected = crypto
+        .createHmac('sha256', secret)
+        .update(`${timestamp}.${body}`)
+        .digest('hex')
+      const expectedHeader = `sha256=${expected}`
+      const a = Buffer.from(expectedHeader, 'utf8')
+      const b = Buffer.from(signature, 'utf8')
+      if (a.length !== b.length) return false
+      return crypto.timingSafeEqual(a, b)
     },
   }
 }
